@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>지원 현황 트래커</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    /* 색상 토큰: 차트 계열색은 dataviz 참조 팔레트 1번(blue) */
+    :root {
+      --bg: #f4f4f1;
+      --surface: #fcfcfb;
+      --text: #0b0b0b;
+      --muted: #52514e;
+      --border: #e0dfda;
+      --series: #2a78d6;
+      --danger: #b93837;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121211;
+        --surface: #1a1a19;
+        --text: #f0efec;
+        --muted: #c3c2b7;
+        --border: #302f2c;
+        --series: #3987e5;
+        --danger: #e66767;
+      }
+    }
+
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.5 "Noto Sans KR", system-ui, sans-serif;
+    }
+    .page { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+
+    h1 { font-size: 20px; margin-bottom: 16px; }
+    h2 { font-size: 13px; font-weight: 700; color: var(--muted); letter-spacing: 0.02em; margin-bottom: 12px; }
+
+    .banner { display: none; padding: 10px 12px; border: 1px solid var(--danger); color: var(--danger); border-radius: 8px; margin-bottom: 16px; }
+    .banner.show { display: block; }
+
+    /* minmax(0, …): 긴 내용이 있어도 열이 화면 밖으로 넓어지지 않게 */
+    .grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+    @media (min-width: 820px) { .grid { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
+
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+
+    /* 상태별 개수 텍스트 = 차트의 표 보기 역할 */
+    .summary { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 12px; color: var(--muted); }
+    .summary b { color: var(--text); font-variant-numeric: tabular-nums; }
+    .summary .total { color: var(--text); font-weight: 700; }
+    .chart-box { position: relative; width: 100%; }
+
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    input, select, textarea, button { font: inherit; color: inherit; }
+    input, select, textarea {
+      width: 100%; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg);
+    }
+    textarea { resize: vertical; min-height: 56px; }
+    .field { margin-bottom: 10px; }
+    /* 날짜 입력칸은 고유 최소 폭이 있어 minmax(0, …)로 줄어들게 함 */
+    .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+    input { min-width: 0; }
+    button {
+      min-height: 36px; padding: 0 14px; border-radius: 6px; cursor: pointer;
+      border: 1px solid var(--border); background: var(--surface);
+    }
+    .primary { background: var(--series); border-color: var(--series); color: #fff; font-weight: 500; }
+    :focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+
+    .status-add { display: flex; gap: 8px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+    .status-add input { min-width: 0; }
+    .status-add button { flex-shrink: 0; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; padding: 0; }
+    .chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 2px 2px 10px; border: 1px solid var(--border); border-radius: 999px; }
+    .chip.fixed { padding-right: 10px; color: var(--muted); }
+    .chip button { min-height: 28px; min-width: 28px; padding: 0; border: 0; border-radius: 999px; background: none; color: var(--muted); }
+    .chip button:disabled { opacity: 0.35; cursor: not-allowed; }
+    .hint { min-height: 1.5em; margin: 6px 0; font-size: 12px; color: var(--muted); }
+    .hint.error { color: var(--danger); }
+
+    .list-title { margin-top: 28px; }
+    .list { list-style: none; padding: 0; display: grid; gap: 8px; }
+    .item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; }
+    .item-head { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+    .item-title { min-width: 0; overflow-wrap: anywhere; }
+    .item-title strong { font-size: 15px; }
+    .item-title span { color: var(--muted); margin-left: 6px; }
+    .item-actions { display: flex; gap: 8px; align-items: center; }
+    .item-actions select { width: auto; min-height: 36px; }
+    .meta { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .meta a { color: var(--series); }
+    .delete { color: var(--danger); }
+    .empty { padding: 28px 16px; text-align: center; color: var(--muted); border: 1px dashed var(--border); border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <h1>지원 현황 트래커</h1>
+
+    <p class="banner" id="banner" role="alert"></p>
+
+    <div class="grid">
+      <section class="panel" aria-labelledby="sum-title">
+        <h2 id="sum-title">상태별 현황</h2>
+        <p class="summary" id="summary"></p>
+        <div class="chart-box" id="chart-box">
+          <canvas id="chart" role="img" aria-label="상태별 지원 개수 막대 차트"></canvas>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="form-title">
+        <h2 id="form-title">지원 추가</h2>
+        <form id="add-form">
+          <div class="field">
+            <label for="company">회사명 *</label>
+            <input id="company" name="company" required maxlength="50">
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="role">직무</label>
+              <input id="role" name="role" maxlength="50" placeholder="백엔드 신입">
+            </div>
+            <div class="field">
+              <label for="appliedAt">지원일</label>
+              <input id="appliedAt" name="appliedAt" type="date">
+            </div>
+          </div>
+          <div class="field">
+            <label for="url">공고 링크</label>
+            <input id="url" name="url" type="url" placeholder="https://">
+          </div>
+          <div class="field">
+            <label for="memo">메모</label>
+            <textarea id="memo" name="memo" maxlength="1000"></textarea>
+          </div>
+          <button class="primary" type="submit">추가</button>
+        </form>
+
+        <form class="status-add" id="status-form">
+          <input id="new-status" maxlength="20" placeholder="새 상태 (예: 코딩 테스트)" aria-label="새 상태 이름">
+          <button type="submit">상태 추가</button>
+        </form>
+        <p class="hint" id="status-hint" role="status"></p>
+        <ul class="chips" id="status-chips" aria-label="상태 목록"></ul>
+      </section>
+    </div>
+
+    <h2 class="list-title">지원 목록</h2>
+    <ul class="list" id="list"></ul>
+  </main>
+
+  <!-- Chart.js를 먼저 불러와야 app.js에서 Chart를 쓸 수 있다 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
+  <script src="app.js"></script>
+</body>
+</html>
